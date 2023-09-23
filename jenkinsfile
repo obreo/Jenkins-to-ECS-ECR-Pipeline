@@ -1,0 +1,50 @@
+pipeline {
+    agent any
+
+    stages {
+        stage('Checkout') {
+            steps {
+                // Check the source-code, e.g. GitHub.
+                checkout scm
+            }
+        }
+
+        stage('Build and Push Docker Image') {
+            steps {
+                script {
+                    // Build Docker image
+                    sh 'docker build -t IMAGE:latest .'
+
+                    // Authenticate and push to ECR (check it in your AWS ECR repo by "View Push Credintials")
+                    withAWS(credentials: 'AWS_CREDITNIALS_ID') {
+                        sh '''
+                        aws ecr get-login-password --region <AWS_REGION> | docker login --username AWS --password-stdin <ECR_LOGIN_ID>
+                        docker tag IMAGE:latest <ECR_LOGIN_ID>/IMAGE:latest
+                        docker push <ECR_LOGIN_ID>/IMAGE:latest
+                        '''
+                    }
+                }
+            }
+        }
+
+        stage('Deploy / Update to ECS') {
+            steps {
+                script {
+                    // Define the ECS cluster, service name, and task definition name
+                    def ecsCluster = ''//'your-ecs-cluster-name'
+                    def ecsService = ''//'your-ecs-service-name'
+                    def taskDefinition = ''//'your-task-definition-name'
+
+                    // Create a new ECS service using the existing task definition
+                    withAWS(region: 'us-east-1', credentials: 'AWS_CREDITNIALS_ID') {
+                        // Create a new Service based on the Task and Cluster
+                        //sh "aws ecs create-service --region us-east-1 --cluster ${ecsCluster} --service-name ${ecsService} --platform-version LATEST --task-definition ${taskDefinition} --launch-type FARGATE --desired-count 1 --network-configuration 'awsvpcConfiguration={subnets=[subnet-0cdba1186d],securityGroups=[sg-079fa4bef],assignPublicIp=ENABLED}'"
+                        
+                        // Update Service based on the Task and Cluster
+                        sh "aws ecs update-service --region us-east-1 --service ${ecsService} --cluster ${ecsCluster} --task-definition ${taskDefinition}"
+                    }
+                }
+            }
+        }
+    }
+}
